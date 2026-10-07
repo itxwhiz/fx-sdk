@@ -54,7 +54,24 @@ export const getEncodeMiscData = (
   minDebtRatio: string,
   maxDebtRatio: string
 ) => {
-  return cBN(maxDebtRatio).times(cBN(2).pow(60)).plus(minDebtRatio).toFixed(0)
+  // The contract reads two adjacent uint60 fields. Decimal's default precision
+  // cannot preserve all 120 bits, so pack the validated integers directly.
+  if (
+    typeof minDebtRatio !== 'string' || typeof maxDebtRatio !== 'string' ||
+    !minDebtRatio || !maxDebtRatio || /\D/.test(minDebtRatio) || /\D/.test(maxDebtRatio)
+  ) {
+    throw new TypeError('Debt ratio bounds must be unsigned integer strings')
+  }
+  const min = BigInt(minDebtRatio)
+  const max = BigInt(maxDebtRatio)
+  const limit = 1n << 60n
+  if (min >= limit || max >= limit) {
+    throw new RangeError('Debt ratio bounds must fit uint60')
+  }
+  if (min > max) {
+    throw new RangeError('Minimum debt ratio cannot exceed maximum debt ratio')
+  }
+  return ((max << 60n) | min).toString()
 }
 
 export const getEncodeMiscDataWithSlippage = (targetDebtRatio: string, slippage: number) => {
