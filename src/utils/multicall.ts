@@ -65,3 +65,31 @@ export async function batchedMulticall<MulticallResult>(
   }
   return results;
 }
+
+/**
+ * Creates a sequence for one quote-search operation, including its routes.
+ * Await each run before starting the next. The next nonempty run pays the
+ * previous run's final delay; the last result never waits on an idle timer.
+ * Unrelated operations must use separate sequences, even on the same client.
+ */
+export function createBatchedMulticallSequence(
+  client: PublicClient,
+  batchSize = MULTICALL_BATCH_SIZE,
+  delayMs = DELAY_TIME_MS
+) {
+  let hasCompletedRun = false;
+
+  return async function run<Result>(
+    contracts: MulticallContractCall[]
+  ): Promise<(Result | undefined)[]> {
+    if (contracts.length === 0) return [];
+    if (hasCompletedRun) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    try {
+      return await batchedMulticall<Result>(client, contracts, batchSize, delayMs);
+    } finally {
+      hasCompletedRun = true;
+    }
+  };
+}
