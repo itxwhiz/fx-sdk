@@ -125,9 +125,26 @@ export class Pool {
   async getPoolInfo(): Promise<PoolInfo> {
     const { isShort } = this.config
 
-    const poolData = await this.getPoolData()
-    const rateRes = await this.price.getRateRes()
-    const oraclePrice = await this.price.getOraclePrice()
+    // Only independent view reads may share an automatic multicall. Keep the
+    // nonpayable converter quotes below in their original execution order.
+    const observe = <T>(read: Promise<T>) => read.then(
+      (value): PromiseFulfilledResult<T> => ({ status: 'fulfilled', value }),
+      (reason): PromiseRejectedResult => ({ status: 'rejected', reason })
+    )
+    const unwrap = async <T>(pending: Promise<PromiseSettledResult<T>>) => {
+      const result = await pending
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    }
+    const poolRead = observe(this.getPoolData())
+    const rateRead = observe(this.price.getRateRes())
+    const oracleRead = observe(this.price.getOraclePrice())
+
+    // Observe all rejections immediately, then retain the original error
+    // priority without waiting for slow siblings after a relevant failure.
+    const poolData = await unwrap(poolRead)
+    const rateRes = await unwrap(rateRead)
+    const oraclePrice = await unwrap(oracleRead)
 
     const buyPrice = cBN(await this.price.getBuyPrice())
       .times(1e18)
