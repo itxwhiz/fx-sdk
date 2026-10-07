@@ -52,14 +52,16 @@ export async function batchedMulticall<MulticallResult>(
 
   const callChunks = chunkArray(contracts, batchSize);
   let results: (MulticallResult | undefined)[] = [];
-  for (const chunk of callChunks) {
+  for (const [index, chunk] of callChunks.entries()) {
     try {
       const chunkResults = await client.multicall({ contracts: chunk });
       results = results.concat(chunkResults as MulticallResult[]);
     } catch (e) {
       results = results.concat(Array(chunk.length).fill(undefined));
     }
-    await new Promise((res) => setTimeout(res, delayMs));
+    if (index < callChunks.length - 1) {
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
   }
   return results;
 }
